@@ -284,7 +284,7 @@ class EssentialMessagePlugin(Star):
         await self._save_subscriptions()
         yield self._reply(event, f"已设置本群每日 {normalized_time} 发送群精华。")
 
-    @filter.command("精华测试")
+    @filter.command("群精华")
     async def send_now(self, event: AstrMessageEvent, count: int | None = None):
         """立即在当前群发送群精华图片。"""
         self._stop_llm(event)
