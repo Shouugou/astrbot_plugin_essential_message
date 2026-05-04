@@ -1,0 +1,53 @@
+{
+  "enabled": {
+    "description": "启用每日随机发送",
+    "type": "bool",
+    "default": false,
+    "hint": "开启后插件会在每天随机时间向配置的 QQ 群发送群精华消息。"
+  },
+  "group_ids": {
+    "description": "目标 QQ 群号列表",
+    "type": "list",
+    "default": [],
+    "hint": "填写需要发送精华消息的群号，例如 [123456, 234567]。"
+  },
+  "daily_count_min": {
+    "description": "每天最少发送条数",
+    "type": "int",
+    "default": 1
+  },
+  "daily_count_max": {
+    "description": "每天最多发送条数",
+    "type": "int",
+    "default": 3
+  },
+  "start_hour": {
+    "description": "每日发送开始小时",
+    "type": "int",
+    "default": 9,
+    "hint": "0-23，例如 9 表示从 09:00 开始。"
+  },
+  "end_hour": {
+    "description": "每日发送结束小时",
+    "type": "int",
+    "default": 22,
+    "hint": "0-23，例如 22 表示最晚到 22:59。"
+  },
+  "check_interval_seconds": {
+    "description": "调度检查间隔秒数",
+    "type": "int",
+    "default": 30
+  },
+  "platform": {
+    "description": "平台适配器",
+    "type": "string",
+    "default": "aiocqhttp",
+    "options": ["aiocqhttp"],
+    "hint": "当前获取群精华接口依赖 aiocqhttp/OneBot 动作。"
+  },
+  "message_prefix": {
+    "description": "发送消息标题",
+    "type": "string",
+    "default": "今日随机群精华"
+  }
+}
