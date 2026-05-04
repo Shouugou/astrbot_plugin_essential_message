@@ -72,7 +72,7 @@ ESSENCE_CARD_TEMPLATE = """
   }
 
   .card {
-    width: 820px;
+    width: 100%;
     padding: 32px 36px 30px;
     border: 1px solid rgba(70, 90, 108, 0.14);
     border-radius: 24px;
