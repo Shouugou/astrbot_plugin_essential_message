@@ -7,7 +7,7 @@ from typing import Any
 
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, MessageChain, filter
-from astrbot.api.message_components import Plain
+from astrbot.api.message_components import Image
 from astrbot.api.star import Context, Star, StarTools, register
 from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_platform_adapter import (
     AiocqhttpAdapter,
@@ -25,6 +25,164 @@ DEFAULT_CONFIG = {
     "platform": "aiocqhttp",
     "message_prefix": "今日随机群精华",
 }
+
+
+ESSENCE_CARD_TEMPLATE = """
+<div class="page">
+  <article class="card">
+    <header class="header">
+      <div class="avatar-wrap">
+        <img class="avatar" src="{{ avatar_url }}" />
+      </div>
+      <div class="sender">
+        <div class="label">{{ title }}</div>
+        <div class="name">{{ sender_nick }}</div>
+        <div class="meta">QQ {{ sender_id }}</div>
+      </div>
+    </header>
+
+    <section class="content">{{ content }}</section>
+
+    <footer class="footer">
+      <div>
+        <span class="footer-label">加精者</span>
+        <span class="footer-value">{{ operator_nick }}</span>
+      </div>
+      <div>
+        <span class="footer-label">加精时间</span>
+        <span class="footer-value">{{ operated_at }}</span>
+      </div>
+    </footer>
+  </article>
+</div>
+
+<style>
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    color: #1f2933;
+    background: #eef4f8;
+  }
+
+  .page {
+    width: 900px;
+    min-height: 520px;
+    padding: 46px;
+    background:
+      radial-gradient(circle at 12% 10%, rgba(82, 153, 140, 0.18), transparent 32%),
+      linear-gradient(135deg, #f7fbfb 0%, #edf4f8 46%, #f9f6ef 100%);
+  }
+
+  .card {
+    width: 100%;
+    min-height: 428px;
+    padding: 38px 42px 34px;
+    border: 1px solid rgba(66, 84, 102, 0.12);
+    border-radius: 24px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 22px 60px rgba(31, 41, 51, 0.13);
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    padding-bottom: 26px;
+    border-bottom: 1px solid #d9e3e8;
+  }
+
+  .avatar-wrap {
+    width: 104px;
+    height: 104px;
+    padding: 5px;
+    border-radius: 28px;
+    background: linear-gradient(135deg, #3f8f83, #e3b657);
+    flex: 0 0 auto;
+  }
+
+  .avatar {
+    display: block;
+    width: 94px;
+    height: 94px;
+    border: 4px solid #ffffff;
+    border-radius: 24px;
+    object-fit: cover;
+    background: #dbe5ea;
+  }
+
+  .sender {
+    min-width: 0;
+  }
+
+  .label {
+    width: fit-content;
+    margin-bottom: 10px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    color: #2f6f66;
+    background: #e4f3ef;
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  .name {
+    max-width: 650px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 44px;
+    font-weight: 800;
+    line-height: 1.16;
+    letter-spacing: 0;
+  }
+
+  .meta {
+    margin-top: 8px;
+    color: #687985;
+    font-size: 22px;
+    line-height: 1.3;
+  }
+
+  .content {
+    margin-top: 32px;
+    color: #1f2933;
+    font-size: 34px;
+    font-weight: 650;
+    line-height: 1.6;
+    letter-spacing: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+    margin-top: 34px;
+    padding-top: 22px;
+    border-top: 1px solid #d9e3e8;
+    color: #52616b;
+    font-size: 21px;
+    line-height: 1.35;
+  }
+
+  .footer-label {
+    margin-right: 8px;
+    color: #82919b;
+    font-weight: 700;
+  }
+
+  .footer-value {
+    font-weight: 750;
+  }
+</style>
+"""
 
 
 @register(
@@ -63,7 +221,8 @@ class EssentialMessagePlugin(Star):
         for gid in groups:
             if await self._send_random_essence(gid):
                 ok += 1
-        yield event.plain_result(f"已尝试发送 {len(groups)} 个群，其中 {ok} 个群发送成功。")
+        if ok == 0:
+            yield event.plain_result("发送失败：没有找到可发送的精华消息，或平台接口调用失败。")
 
     @filter.command("essence_status")
     async def essence_status(self, event: AstrMessageEvent):
@@ -168,11 +327,11 @@ class EssentialMessagePlugin(Star):
             if message_id:
                 sent_ids.add(message_id)
 
-            text = self._format_essence(item)
+            image_url = await self._render_essence_card(item)
             await StarTools.send_message_by_id(
                 "GroupMessage",
                 str(group_id),
-                MessageChain([Plain(text)]),
+                MessageChain([Image(file=image_url)]),
                 platform=self._cfg_str("platform") or "aiocqhttp",
             )
             logger.info("已向群 %s 发送一条随机精华消息。", group_id)
@@ -215,19 +374,30 @@ class EssentialMessagePlugin(Star):
                 groups.append(str(group_id))
         return list(dict.fromkeys(groups))
 
-    def _format_essence(self, item: dict[str, Any]) -> str:
-        prefix = self._cfg_str("message_prefix") or "今日随机群精华"
-        sender = item.get("sender_nick") or item.get("sender_id") or "未知用户"
-        operator = item.get("operator_nick") or item.get("operator_id") or "未知管理员"
-        operated_at = self._format_timestamp(item.get("operator_time"))
-        content = self._content_to_text(item.get("content")).strip() or "(空内容)"
-        return (
-            f"{prefix}\n"
-            f"发送者: {sender}\n"
-            f"加精者: {operator}\n"
-            f"加精时间: {operated_at}\n"
-            f"内容:\n{content}"
+    async def _render_essence_card(self, item: dict[str, Any]) -> str:
+        sender_id = str(item.get("sender_id") or "")
+        data = {
+            "title": self._cfg_str("message_prefix") or "今日随机群精华",
+            "sender_id": sender_id or "未知",
+            "sender_nick": item.get("sender_nick") or sender_id or "未知用户",
+            "operator_nick": item.get("operator_nick")
+            or item.get("operator_id")
+            or "未知管理员",
+            "operated_at": self._format_timestamp(item.get("operator_time")),
+            "content": self._content_to_text(item.get("content")).strip() or "(空内容)",
+            "avatar_url": self._avatar_url(sender_id),
+        }
+        return await self.html_render(
+            ESSENCE_CARD_TEMPLATE,
+            data,
+            options={"full_page": True, "type": "png"},
         )
+
+    @staticmethod
+    def _avatar_url(user_id: str) -> str:
+        if not user_id:
+            user_id = "10000"
+        return f"https://q4.qlogo.cn/headimg_dl?dst_uin={user_id}&spec=640"
 
     @staticmethod
     def _content_to_text(content: Any) -> str:
