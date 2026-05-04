@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import random
-from datetime import datetime, timedelta
+import re
+from datetime import datetime
 from typing import Any
 
 from astrbot.api import logger
@@ -15,102 +16,93 @@ from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_platform_adapter import (
 
 
 DEFAULT_CONFIG = {
-    "enabled": False,
-    "group_ids": [],
-    "daily_count_min": 1,
-    "daily_count_max": 3,
-    "start_hour": 9,
-    "end_hour": 22,
+    "enabled": True,
+    "default_daily_count": 1,
+    "default_send_time": "09:00",
     "check_interval_seconds": 30,
     "platform": "aiocqhttp",
-    "message_prefix": "今日随机群精华",
+    "message_prefix": "今日群精华",
 }
+
+SUBSCRIPTIONS_KEY = "group_subscriptions"
+TIME_PATTERN = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
 
 
 ESSENCE_CARD_TEMPLATE = """
-<div class="page">
-  <article class="card">
-    <header class="header">
-      <div class="avatar-wrap">
-        <img class="avatar" src="{{ avatar_url }}" />
-      </div>
-      <div class="sender">
-        <div class="label">{{ title }}</div>
-        <div class="name">{{ sender_nick }}</div>
-        <div class="meta">QQ {{ sender_id }}</div>
-      </div>
-    </header>
+<article class="card">
+  <header class="header">
+    <div class="avatar-wrap">
+      <img class="avatar" src="{{ avatar_url }}" />
+    </div>
+    <div class="sender">
+      <div class="label">{{ title }}</div>
+      <div class="name">{{ sender_nick }}</div>
+      <div class="meta">QQ {{ sender_id }}</div>
+    </div>
+  </header>
 
-    <section class="content">{{ content }}</section>
+  <section class="content">{{ content }}</section>
 
-    <footer class="footer">
-      <div>
-        <span class="footer-label">加精者</span>
-        <span class="footer-value">{{ operator_nick }}</span>
-      </div>
-      <div>
-        <span class="footer-label">加精时间</span>
-        <span class="footer-value">{{ operated_at }}</span>
-      </div>
-    </footer>
-  </article>
-</div>
+  <footer class="footer">
+    <div>
+      <span class="footer-label">加精者</span>
+      <span class="footer-value">{{ operator_nick }}</span>
+    </div>
+    <div>
+      <span class="footer-label">加精时间</span>
+      <span class="footer-value">{{ operated_at }}</span>
+    </div>
+  </footer>
+</article>
 
 <style>
   * {
     box-sizing: border-box;
   }
 
+  html,
   body {
     margin: 0;
+    width: fit-content;
+    height: fit-content;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
       "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-    color: #1f2933;
-    background: #eef4f8;
-  }
-
-  .page {
-    width: 900px;
-    min-height: 520px;
-    padding: 46px;
-    background:
-      radial-gradient(circle at 12% 10%, rgba(82, 153, 140, 0.18), transparent 32%),
-      linear-gradient(135deg, #f7fbfb 0%, #edf4f8 46%, #f9f6ef 100%);
+    color: #202a33;
+    background: transparent;
   }
 
   .card {
-    width: 100%;
-    min-height: 428px;
-    padding: 38px 42px 34px;
-    border: 1px solid rgba(66, 84, 102, 0.12);
+    width: 820px;
+    padding: 32px 36px 30px;
+    border: 1px solid rgba(70, 90, 108, 0.14);
     border-radius: 24px;
-    background: rgba(255, 255, 255, 0.92);
-    box-shadow: 0 22px 60px rgba(31, 41, 51, 0.13);
+    background: linear-gradient(135deg, #ffffff 0%, #f8fbfa 72%, #fbf7ed 100%);
+    box-shadow: 0 18px 42px rgba(31, 41, 51, 0.14);
   }
 
   .header {
     display: flex;
     align-items: center;
-    gap: 22px;
-    padding-bottom: 26px;
+    gap: 20px;
+    padding-bottom: 22px;
     border-bottom: 1px solid #d9e3e8;
   }
 
   .avatar-wrap {
-    width: 104px;
-    height: 104px;
+    width: 102px;
+    height: 102px;
     padding: 5px;
-    border-radius: 28px;
-    background: linear-gradient(135deg, #3f8f83, #e3b657);
+    border-radius: 26px;
+    background: linear-gradient(135deg, #348a7c, #d5af42);
     flex: 0 0 auto;
   }
 
   .avatar {
     display: block;
-    width: 94px;
-    height: 94px;
+    width: 92px;
+    height: 92px;
     border: 4px solid #ffffff;
-    border-radius: 24px;
+    border-radius: 22px;
     object-fit: cover;
     background: #dbe5ea;
   }
@@ -121,40 +113,40 @@ ESSENCE_CARD_TEMPLATE = """
 
   .label {
     width: fit-content;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
     padding: 5px 12px;
     border-radius: 999px;
-    color: #2f6f66;
-    background: #e4f3ef;
+    color: #2f756b;
+    background: #dff1ec;
     font-size: 22px;
-    font-weight: 700;
+    font-weight: 750;
     line-height: 1.2;
   }
 
   .name {
-    max-width: 650px;
+    max-width: 620px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 44px;
-    font-weight: 800;
-    line-height: 1.16;
+    font-size: 42px;
+    font-weight: 850;
+    line-height: 1.15;
     letter-spacing: 0;
   }
 
   .meta {
-    margin-top: 8px;
+    margin-top: 7px;
     color: #687985;
-    font-size: 22px;
+    font-size: 21px;
     line-height: 1.3;
   }
 
   .content {
-    margin-top: 32px;
-    color: #1f2933;
+    margin-top: 28px;
+    color: #202a33;
     font-size: 34px;
-    font-weight: 650;
-    line-height: 1.6;
+    font-weight: 700;
+    line-height: 1.55;
     letter-spacing: 0;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
@@ -163,9 +155,9 @@ ESSENCE_CARD_TEMPLATE = """
   .footer {
     display: flex;
     justify-content: space-between;
-    gap: 24px;
-    margin-top: 34px;
-    padding-top: 22px;
+    gap: 20px;
+    margin-top: 30px;
+    padding-top: 20px;
     border-top: 1px solid #d9e3e8;
     color: #52616b;
     font-size: 21px;
@@ -175,11 +167,11 @@ ESSENCE_CARD_TEMPLATE = """
   .footer-label {
     margin-right: 8px;
     color: #82919b;
-    font-weight: 700;
+    font-weight: 750;
   }
 
   .footer-value {
-    font-weight: 750;
+    font-weight: 800;
   }
 </style>
 """
@@ -188,8 +180,8 @@ ESSENCE_CARD_TEMPLATE = """
 @register(
     "astrbot_plugin_essential_message",
     "shouugou",
-    "每天随机发送几条 QQ 群精华消息",
-    "0.1.0",
+    "每天固定时间发送 QQ 群精华消息",
+    "0.2.0",
 )
 class EssentialMessagePlugin(Star):
     def __init__(self, context: Context, config: dict | None = None):
@@ -197,44 +189,129 @@ class EssentialMessagePlugin(Star):
         self.config = config or DEFAULT_CONFIG
         self._task: asyncio.Task | None = None
         self._stopped = asyncio.Event()
-        self._schedule_date = ""
-        self._schedule: list[datetime] = []
-        self._sent_slots: set[int] = set()
+        self._subscriptions: dict[str, dict[str, Any]] = {}
         self._sent_message_ids: dict[str, set[str]] = {}
 
     async def initialize(self):
+        self._subscriptions = await self._load_subscriptions()
         if self._cfg_bool("enabled"):
             self._task = asyncio.create_task(self._daily_loop())
-            logger.info("Essential Message 插件已启动每日精华调度。")
+            logger.info("Essential Message 插件已启动固定时间群精华调度。")
         else:
             logger.info("Essential Message 插件未启用。请在插件配置中打开 enabled。")
 
-    @filter.command("essence_now")
-    async def essence_now(self, event: AstrMessageEvent, group_id: str | None = None):
-        """立即随机发送一条群精华。可传入群号；不传则使用当前群或配置中的群。"""
-        groups = [str(group_id)] if group_id else self._target_groups(event)
-        if not groups:
-            yield event.plain_result("未找到目标群号。请在群内使用，或在配置中填写 group_ids。")
+    @filter.command("精华开启")
+    async def subscribe_group(
+        self,
+        event: AstrMessageEvent,
+        count_or_time: str | None = None,
+        send_time: str | None = None,
+    ):
+        """在当前群开启每日群精华发送，可选参数：条数 时间，如 /精华开启 3 09:30"""
+        group_id, error = await self._require_group_operator(event)
+        if error:
+            yield self._reply(event, error)
             return
 
-        ok = 0
-        for gid in groups:
-            if await self._send_random_essence(gid):
-                ok += 1
-        if ok == 0:
-            yield event.plain_result("发送失败：没有找到可发送的精华消息，或平台接口调用失败。")
+        count, parsed_time = self._parse_count_time(count_or_time, send_time)
+        normalized_time = self._normalize_time(
+            parsed_time or self._cfg_str("default_send_time")
+        )
+        if not normalized_time:
+            yield self._reply(event, "时间格式不正确，请使用 HH:MM，例如 09:30。")
+            return
 
-    @filter.command("essence_status")
-    async def essence_status(self, event: AstrMessageEvent):
-        """查看群精华每日随机发送插件状态。"""
-        groups = self._target_groups(event)
-        status = "启用" if self._cfg_bool("enabled") else "未启用"
-        schedule = ", ".join(dt.strftime("%H:%M") for dt in self._schedule) or "尚未生成"
-        yield event.plain_result(
-            f"Essential Message: {status}\n"
-            f"目标群: {', '.join(groups) if groups else '未配置'}\n"
-            f"今日计划: {schedule}\n"
-            f"已发送槽位: {len(self._sent_slots)}"
+        daily_count = self._normalize_count(count or self._cfg_int("default_daily_count"))
+        self._subscriptions[group_id] = {
+            "enabled": True,
+            "count": daily_count,
+            "time": normalized_time,
+            "last_sent_date": "",
+        }
+        await self._save_subscriptions()
+        yield self._reply(
+            event,
+            f"已开启本群每日群精华：每天 {normalized_time} 发送 {daily_count} 条。",
+        )
+
+    @filter.command("精华关闭")
+    async def unsubscribe_group(self, event: AstrMessageEvent):
+        """在当前群关闭每日群精华发送。"""
+        group_id, error = await self._require_group_operator(event)
+        if error:
+            yield self._reply(event, error)
+            return
+
+        sub = self._subscriptions.setdefault(group_id, {})
+        sub["enabled"] = False
+        await self._save_subscriptions()
+        yield self._reply(event, "已关闭本群每日群精华。")
+
+    @filter.command("精华条数")
+    async def set_group_count(self, event: AstrMessageEvent, count: int):
+        """设置当前群每次固定发送的精华条数。"""
+        group_id, error = await self._require_group_operator(event)
+        if error:
+            yield self._reply(event, error)
+            return
+
+        sub = self._ensure_subscription(group_id)
+        sub["count"] = self._normalize_count(count)
+        await self._save_subscriptions()
+        yield self._reply(event, f"已设置本群每次发送 {sub['count']} 条群精华。")
+
+    @filter.command("精华时间")
+    async def set_group_time(self, event: AstrMessageEvent, send_time: str):
+        """设置当前群每日固定发送时间，格式 HH:MM。"""
+        group_id, error = await self._require_group_operator(event)
+        if error:
+            yield self._reply(event, error)
+            return
+
+        normalized_time = self._normalize_time(send_time)
+        if not normalized_time:
+            yield self._reply(event, "时间格式不正确，请使用 HH:MM，例如 09:30。")
+            return
+
+        sub = self._ensure_subscription(group_id)
+        sub["time"] = normalized_time
+        await self._save_subscriptions()
+        yield self._reply(event, f"已设置本群每日 {normalized_time} 发送群精华。")
+
+    @filter.command("精华测试")
+    async def send_now(self, event: AstrMessageEvent, count: int | None = None):
+        """立即在当前群发送群精华图片。"""
+        self._stop_llm(event)
+        group_id = event.get_group_id()
+        if not group_id:
+            yield self._reply(event, "请在群聊中使用该指令。")
+            return
+
+        sub = self._ensure_subscription(group_id)
+        send_count = self._normalize_count(count or int(sub["count"]))
+        ok = await self._send_random_essences(group_id, send_count)
+        if not ok:
+            yield self._reply(event, "发送失败：没有找到可发送的精华消息，或平台接口调用失败。")
+            return
+        event.stop_event()
+
+    @filter.command("精华状态")
+    async def status(self, event: AstrMessageEvent):
+        """查看当前群精华订阅状态。"""
+        self._stop_llm(event)
+        group_id = event.get_group_id()
+        if not group_id:
+            yield self._reply(event, "请在群聊中使用该指令。")
+            return
+
+        sub = self._subscriptions.get(group_id)
+        if not sub or not sub.get("enabled"):
+            yield self._reply(event, "本群未开启每日群精华。")
+            return
+
+        yield self._reply(
+            event,
+            f"本群已开启每日群精华：每天 {sub.get('time')} 发送 {sub.get('count')} 条。",
         )
 
     async def terminate(self):
@@ -249,16 +326,23 @@ class EssentialMessagePlugin(Star):
     async def _daily_loop(self):
         while not self._stopped.is_set():
             try:
-                self._ensure_today_schedule()
-                now = datetime.now()
-                groups = self._target_groups()
-                if groups:
-                    for slot, run_at in enumerate(self._schedule):
-                        if slot in self._sent_slots or now < run_at:
+                if self._cfg_bool("enabled"):
+                    now = datetime.now()
+                    today = now.strftime("%Y-%m-%d")
+                    now_minutes = now.hour * 60 + now.minute
+                    for group_id, sub in list(self._subscriptions.items()):
+                        if not sub.get("enabled"):
                             continue
-                        for group_id in groups:
-                            await self._send_random_essence(group_id)
-                        self._sent_slots.add(slot)
+                        if sub.get("last_sent_date") == today:
+                            continue
+                        target_minutes = self._time_to_minutes(str(sub.get("time", "")))
+                        if target_minutes is None or now_minutes < target_minutes:
+                            continue
+                        count = self._normalize_count(sub.get("count", 1))
+                        if await self._send_random_essences(group_id, count):
+                            sub["last_sent_date"] = today
+                            await self._save_subscriptions()
+
                 await asyncio.wait_for(
                     self._stopped.wait(),
                     timeout=max(10, self._cfg_int("check_interval_seconds")),
@@ -268,44 +352,10 @@ class EssentialMessagePlugin(Star):
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                logger.exception(f"Essential Message 调度循环异常: {exc!r}")
+                logger.exception("Essential Message 调度循环异常: %r", exc)
                 await asyncio.sleep(60)
 
-    def _ensure_today_schedule(self):
-        today = datetime.now().strftime("%Y-%m-%d")
-        if self._schedule_date == today:
-            return
-
-        self._schedule_date = today
-        self._sent_slots.clear()
-        self._sent_message_ids.clear()
-
-        count_min = max(0, self._cfg_int("daily_count_min"))
-        count_max = max(count_min, self._cfg_int("daily_count_max"))
-        count = random.randint(count_min, count_max) if count_max > 0 else 0
-
-        start_hour = min(23, max(0, self._cfg_int("start_hour")))
-        end_hour = min(23, max(0, self._cfg_int("end_hour")))
-        if end_hour < start_hour:
-            end_hour = start_hour
-
-        start = datetime.now().replace(
-            hour=start_hour, minute=0, second=0, microsecond=0
-        )
-        end = datetime.now().replace(
-            hour=end_hour, minute=59, second=59, microsecond=0
-        )
-        span_seconds = max(0, int((end - start).total_seconds()))
-        self._schedule = sorted(
-            start + timedelta(seconds=random.randint(0, span_seconds))
-            for _ in range(count)
-        )
-        logger.info(
-            "Essential Message 今日计划: %s",
-            ", ".join(dt.strftime("%H:%M:%S") for dt in self._schedule) or "无",
-        )
-
-    async def _send_random_essence(self, group_id: str) -> bool:
+    async def _send_random_essences(self, group_id: str, count: int) -> bool:
         try:
             essences = await self._fetch_essences(group_id)
             if not essences:
@@ -319,23 +369,26 @@ class EssentialMessagePlugin(Star):
                 if str(item.get("message_id") or item.get("msg_seq") or "")
                 not in sent_ids
             ]
-            if not candidates:
+            if len(candidates) < count:
                 candidates = essences
 
-            item = random.choice(candidates)
-            message_id = str(item.get("message_id") or item.get("msg_seq") or "")
-            if message_id:
-                sent_ids.add(message_id)
+            selected = random.sample(candidates, k=min(count, len(candidates)))
+            for item in selected:
+                message_id = str(item.get("message_id") or item.get("msg_seq") or "")
+                if message_id:
+                    sent_ids.add(message_id)
 
-            image_url = await self._render_essence_card(item)
-            await StarTools.send_message_by_id(
-                "GroupMessage",
-                str(group_id),
-                MessageChain([Image(file=image_url)]),
-                platform=self._cfg_str("platform") or "aiocqhttp",
-            )
-            logger.info("已向群 %s 发送一条随机精华消息。", group_id)
-            return True
+                image_url = await self._render_essence_card(item)
+                await StarTools.send_message_by_id(
+                    "GroupMessage",
+                    str(group_id),
+                    MessageChain([Image(file=image_url)]),
+                    platform=self._cfg_str("platform") or "aiocqhttp",
+                )
+                await asyncio.sleep(0.6)
+
+            logger.info("已向群 %s 发送 %s 条随机精华消息。", group_id, len(selected))
+            return bool(selected)
         except Exception as exc:
             logger.exception("向群 %s 发送随机精华失败: %r", group_id, exc)
             return False
@@ -356,28 +409,10 @@ class EssentialMessagePlugin(Star):
                 return platform.bot
         raise RuntimeError("未找到 aiocqhttp 适配器，无法获取或发送 QQ 群精华消息。")
 
-    def _target_groups(self, event: AstrMessageEvent | None = None) -> list[str]:
-        configured = self.config.get("group_ids", [])
-        groups: list[str] = []
-        if isinstance(configured, list):
-            groups.extend(str(item).strip() for item in configured if str(item).strip())
-        elif isinstance(configured, str):
-            groups.extend(
-                item.strip()
-                for item in configured.replace("，", ",").split(",")
-                if item.strip()
-            )
-
-        if not groups and event:
-            group_id = event.get_group_id()
-            if group_id:
-                groups.append(str(group_id))
-        return list(dict.fromkeys(groups))
-
     async def _render_essence_card(self, item: dict[str, Any]) -> str:
         sender_id = str(item.get("sender_id") or "")
         data = {
-            "title": self._cfg_str("message_prefix") or "今日随机群精华",
+            "title": self._cfg_str("message_prefix") or "今日群精华",
             "sender_id": sender_id or "未知",
             "sender_nick": item.get("sender_nick") or sender_id or "未知用户",
             "operator_nick": item.get("operator_nick")
@@ -390,8 +425,105 @@ class EssentialMessagePlugin(Star):
         return await self.html_render(
             ESSENCE_CARD_TEMPLATE,
             data,
-            options={"full_page": True, "type": "png"},
+            options={
+                "full_page": True,
+                "type": "png",
+                "omit_background": True,
+            },
         )
+
+    async def _require_group_operator(
+        self,
+        event: AstrMessageEvent,
+    ) -> tuple[str, str | None]:
+        self._stop_llm(event)
+        group_id = event.get_group_id()
+        if not group_id:
+            return "", "请在群聊中使用该指令。"
+
+        if event.is_admin():
+            return group_id, None
+
+        sender_id = self._event_sender_id(event)
+        try:
+            group = await event.get_group(group_id)
+        except Exception as exc:
+            logger.exception("获取群 %s 信息失败: %r", group_id, exc)
+            return "", "无法获取群权限信息，请稍后再试。"
+
+        owner_id = str(getattr(group, "group_owner", "") or "")
+        admin_ids = {
+            str(admin_id) for admin_id in (getattr(group, "group_admins", None) or [])
+        }
+        if sender_id and (sender_id == owner_id or sender_id in admin_ids):
+            return group_id, None
+        return "", "只有群主、群管理员或机器人管理员可以使用该指令。"
+
+    async def _load_subscriptions(self) -> dict[str, dict[str, Any]]:
+        raw = await self.get_kv_data(SUBSCRIPTIONS_KEY, {})
+        if isinstance(raw, dict):
+            return {
+                str(group_id): self._normalize_subscription(sub)
+                for group_id, sub in raw.items()
+                if isinstance(sub, dict)
+            }
+
+        return {}
+
+    async def _save_subscriptions(self):
+        await self.put_kv_data(SUBSCRIPTIONS_KEY, self._subscriptions)
+
+    def _ensure_subscription(self, group_id: str) -> dict[str, Any]:
+        sub = self._subscriptions.get(group_id)
+        if not sub:
+            sub = self._normalize_subscription({})
+            self._subscriptions[group_id] = sub
+        return sub
+
+    def _normalize_subscription(self, sub: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "enabled": bool(sub.get("enabled", True)),
+            "count": self._normalize_count(
+                sub.get("count", self._cfg_int("default_daily_count"))
+            ),
+            "time": self._normalize_time(
+                str(sub.get("time") or self._cfg_str("default_send_time"))
+            )
+            or self._cfg_str("default_send_time")
+            or "09:00",
+            "last_sent_date": str(sub.get("last_sent_date") or ""),
+        }
+
+    @staticmethod
+    def _parse_count_time(
+        count_or_time: str | None,
+        send_time: str | None,
+    ) -> tuple[int | None, str | None]:
+        count = None
+        parsed_time = None
+        first = str(count_or_time).strip() if count_or_time is not None else ""
+        second = str(send_time).strip() if send_time is not None else ""
+
+        if first:
+            if EssentialMessagePlugin._normalize_time(first):
+                parsed_time = first
+            else:
+                try:
+                    count = int(first)
+                except ValueError:
+                    parsed_time = first
+        if second:
+            parsed_time = second
+        return count, parsed_time
+
+    @staticmethod
+    def _event_sender_id(event: AstrMessageEvent) -> str:
+        sender_id = event.get_sender_id()
+        if sender_id:
+            return str(sender_id)
+        sender = getattr(getattr(event, "message_obj", None), "sender", None)
+        raw_sender_id = getattr(sender, "user_id", "")
+        return str(raw_sender_id) if raw_sender_id else ""
 
     @staticmethod
     def _avatar_url(user_id: str) -> str:
@@ -427,6 +559,41 @@ class EssentialMessagePlugin(Star):
             return datetime.fromtimestamp(int(value)).strftime("%Y-%m-%d %H:%M:%S")
         except (TypeError, ValueError, OSError):
             return "未知"
+
+    @staticmethod
+    def _normalize_time(value: str | None) -> str | None:
+        if not value:
+            return None
+        value = value.strip()
+        match = TIME_PATTERN.match(value)
+        if not match:
+            return None
+        hour, minute = match.groups()
+        return f"{int(hour):02d}:{int(minute):02d}"
+
+    @staticmethod
+    def _time_to_minutes(value: str) -> int | None:
+        normalized = EssentialMessagePlugin._normalize_time(value)
+        if not normalized:
+            return None
+        hour, minute = normalized.split(":", maxsplit=1)
+        return int(hour) * 60 + int(minute)
+
+    @staticmethod
+    def _normalize_count(value: Any) -> int:
+        try:
+            count = int(value)
+        except (TypeError, ValueError):
+            count = 1
+        return min(10, max(1, count))
+
+    def _reply(self, event: AstrMessageEvent, text: str):
+        self._stop_llm(event)
+        return event.plain_result(text).stop_event()
+
+    @staticmethod
+    def _stop_llm(event: AstrMessageEvent):
+        event.should_call_llm(True)
 
     def _cfg_bool(self, key: str) -> bool:
         return bool(self.config.get(key, DEFAULT_CONFIG.get(key, False)))
