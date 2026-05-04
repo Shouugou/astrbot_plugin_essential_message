@@ -58,32 +58,34 @@ ESSENCE_CARD_TEMPLATE = """
 <style>
   * {
     box-sizing: border-box;
-    margin: 0;
-    padding: 0;
   }
 
-  /* 关键：让页面尺寸 = 卡片尺寸，无任何留白 */
+  /* 关键修复：让页面铺满整个画布，不再自动收缩 */
   html,
   body {
-    width: 820px; /* 和卡片宽度一致 */
-    height: auto;
     margin: 0;
     padding: 0;
+    width: 100%;
+    height: 100%;
+    /* 居中卡片，让它在画布中间，四周留白均匀 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
       "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
     color: #202a33;
     background: transparent;
   }
 
-  /* 卡片占满整个画布，无边距、无留白 */
   .card {
-    width: 100%;
-    height: 100%;
+    width: 820px;
     padding: 32px 36px 30px;
     border: 1px solid rgba(70, 90, 108, 0.14);
     border-radius: 24px;
     background: linear-gradient(135deg, #ffffff 0%, #f8fbfa 72%, #fbf7ed 100%);
     box-shadow: 0 18px 42px rgba(31, 41, 51, 0.14);
+    /* 防止卡片被压缩 */
+    flex-shrink: 0;
   }
 
   .header {
