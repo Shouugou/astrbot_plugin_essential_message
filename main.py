@@ -65,7 +65,6 @@ ESSENCE_CARD_TEMPLATE = """
   body {
     margin: 0;
     padding: 0;
-    width: 820px;
     /* 居中卡片，让它在画布中间，四周留白均匀 */
     display: flex;
     align-items: center;
@@ -433,9 +432,10 @@ class EssentialMessagePlugin(Star):
             ESSENCE_CARD_TEMPLATE,
             data,
             options={
-                "full_page": False,
+                "full_page": True,
                 "type": "png",
                 "omit_background": True,
+                "scale": "css",
             },
         )
 
