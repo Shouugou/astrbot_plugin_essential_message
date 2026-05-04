@@ -56,6 +56,9 @@ ESSENCE_CARD_TEMPLATE = """
 </article>
 
 <style>
+  * {
+    box-sizing: border-box;
+  }
 
   /* 关键修复：让页面铺满整个画布，不再自动收缩 */
   html,
@@ -429,7 +432,7 @@ class EssentialMessagePlugin(Star):
             ESSENCE_CARD_TEMPLATE,
             data,
             options={
-                "full_page": True,
+                "full_page": False,
                 "type": "png",
                 "omit_background": True,
             },
