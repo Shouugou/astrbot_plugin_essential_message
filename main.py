@@ -65,6 +65,7 @@ ESSENCE_CARD_TEMPLATE = """
   body {
     margin: 0;
     padding: 0;
+    width: 820px;
     /* 居中卡片，让它在画布中间，四周留白均匀 */
     display: flex;
     align-items: center;
