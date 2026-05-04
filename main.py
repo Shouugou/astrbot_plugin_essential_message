@@ -65,9 +65,8 @@ ESSENCE_CARD_TEMPLATE = """
   body {
     margin: 0;
     padding: 0;
-    width: fit-content; 
-    height: fit-content; 
-    display: block; 
+    /* 居中卡片，让它在画布中间，四周留白均匀 */
+    display: flex;
     align-items: center;
     justify-content: center;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
