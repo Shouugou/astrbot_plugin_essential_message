@@ -435,7 +435,7 @@ class EssentialMessagePlugin(Star):
                 "full_page": True,
                 "type": "png",
                 "omit_background": True,
-                "scale": "css",
+                "scale": "device",
             },
         )
 
