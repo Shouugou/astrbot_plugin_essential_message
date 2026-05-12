@@ -210,7 +210,7 @@ ESSENCE_CARD_TEMPLATE = """
 
 @register(
     "astrbot_plugin_essential_message",
-    "shouugou",
+    "Shouugou",
     "每天固定时间发送 QQ 群精华消息",
     "0.3.1",
 )
