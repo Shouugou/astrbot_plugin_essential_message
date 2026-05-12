@@ -205,10 +205,10 @@ self._task = asyncio.create_task(self._daily_loop())
 - `_content_to_text(...)` 将群精华内容转换为文本。
 - `_avatar_url(user_id)` 生成 QQ 头像 URL。
 - `_format_timestamp(...)` 格式化加精时间。
-- `html_render(...)` 将 HTML/CSS 模板渲染为 PNG。
+- `html_render(...)` 将 HTML/CSS 模板渲染为 PNG，使用 `full_page: True` 以自适应内容高度，避免高内容卡片被裁切。
 - 最终通过 `Image(file=image_url)` 发送。
 
-修改卡片样式时，主要编辑 `ESSENCE_CARD_TEMPLATE` 中的 HTML 和 CSS。
+修改卡片样式时，主要编辑 `ESSENCE_CARD_TEMPLATE` 中的 HTML 和 CSS。注意保持 `full_page: True`，否则内容过高时图片会被裁切。
 
 ## 重要实现约定
 

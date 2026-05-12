@@ -469,7 +469,7 @@ class EssentialMessagePlugin(Star):
             ESSENCE_CARD_TEMPLATE,
             data,
             options={
-                "full_page": False,
+                "full_page": True,
                 "type": "png",
                 "omit_background": True,
             },
