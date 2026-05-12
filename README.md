@@ -7,6 +7,8 @@
 - 通过 `get_essence_msg_list` 获取指定 QQ 群的精华消息列表。
 - 群主、群管理员或机器人管理员可在当前群开启/关闭每日群精华订阅。
 - 每个订阅群可设置每日固定发送时间和每次发送条数。
+- 订阅群聊会持久化保存到 AstrBot 插件数据目录中的本地 JSON 文件。
+- 插件配置页面可增删订阅群聊，并查看当前订阅群聊概览。
 - 到达固定时间后随机挑选群精华消息，并渲染为图片卡片发送。
 - 图片卡片会展示发送者 QQ 头像、昵称、QQ 号、加精者和加精时间。
 - 当天内尽量避免重复发送同一条精华。
@@ -20,8 +22,16 @@
 - `default_daily_count`: 群订阅默认每次发送条数。
 - `default_send_time`: 群订阅默认每日固定发送时间，格式 `HH:MM`。
 - `message_prefix`: 图片卡片标题。
+- `subscription_group_ids`: 订阅群聊 QQ 群号列表，可在配置页面增删；新增群使用默认条数和默认时间。
+- `subscription_overview`: 当前订阅群聊概览，由插件自动同步，请通过群聊指令修改订阅。
 
 当前获取群精华和主动发群消息依赖 `aiocqhttp` / OneBot 适配器。
+
+订阅数据同时保存到 AstrBot KV 存储和本地文件：
+
+```text
+data/plugin_data/astrbot_plugin_essential_message/group_subscriptions.json
+```
 
 ## 指令
 

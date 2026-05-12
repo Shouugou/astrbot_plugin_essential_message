@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import asyncio
 import html
+import json
 import random
 import re
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, MessageChain, filter
 from astrbot.api.message_components import Image
 from astrbot.api.star import Context, Star, StarTools, register
+from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_platform_adapter import (
     AiocqhttpAdapter,
 )
@@ -23,9 +26,13 @@ DEFAULT_CONFIG = {
     "check_interval_seconds": 30,
     "platform": "aiocqhttp",
     "message_prefix": "今日群精华",
+    "subscription_group_ids": [],
+    "subscription_overview": "暂无订阅群聊",
 }
 
 SUBSCRIPTIONS_KEY = "group_subscriptions"
+SUBSCRIPTION_GROUP_IDS_KEY = "subscription_group_ids"
+SUBSCRIPTIONS_FILE_NAME = "group_subscriptions.json"
 TIME_PATTERN = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
 
 
@@ -224,14 +231,16 @@ class EssentialMessagePlugin(Star):
         self._stopped = asyncio.Event()
         self._subscriptions: dict[str, dict[str, Any]] = {}
         self._sent_message_ids: dict[str, set[str]] = {}
+        self._last_config_group_ids: tuple[str, ...] = ()
 
     async def initialize(self):
         self._subscriptions = await self._load_subscriptions()
+        await self._apply_startup_config_subscriptions()
+        self._task = asyncio.create_task(self._daily_loop())
         if self._cfg_bool("enabled"):
-            self._task = asyncio.create_task(self._daily_loop())
             logger.info("Essential Message 插件已启动固定时间群精华调度。")
         else:
-            logger.info("Essential Message 插件未启用。请在插件配置中打开 enabled。")
+            logger.info("Essential Message 插件已启动，自动发送调度暂未启用。")
 
     @filter.command("精华开启")
     async def subscribe_group(
@@ -359,6 +368,7 @@ class EssentialMessagePlugin(Star):
     async def _daily_loop(self):
         while not self._stopped.is_set():
             try:
+                await self._apply_config_subscription_changes()
                 if self._cfg_bool("enabled"):
                     now = datetime.now()
                     today = now.strftime("%Y-%m-%d")
@@ -493,18 +503,140 @@ class EssentialMessagePlugin(Star):
         return "", "只有群主、群管理员或机器人管理员可以使用该指令。"
 
     async def _load_subscriptions(self) -> dict[str, dict[str, Any]]:
+        file_data = self._load_local_subscriptions()
+        if file_data:
+            await self.put_kv_data(SUBSCRIPTIONS_KEY, file_data)
+            return file_data
+
         raw = await self.get_kv_data(SUBSCRIPTIONS_KEY, {})
         if isinstance(raw, dict):
-            return {
+            subscriptions = {
                 str(group_id): self._normalize_subscription(sub)
                 for group_id, sub in raw.items()
                 if isinstance(sub, dict)
             }
+            self._save_local_subscriptions(subscriptions)
+            return subscriptions
 
         return {}
 
     async def _save_subscriptions(self):
         await self.put_kv_data(SUBSCRIPTIONS_KEY, self._subscriptions)
+        self._save_local_subscriptions(self._subscriptions)
+        self._sync_subscription_config(self._subscriptions, save_config=True)
+
+    async def _apply_startup_config_subscriptions(self):
+        config_group_ids = self._cfg_group_ids()
+        if config_group_ids:
+            if self._reconcile_subscriptions_with_group_ids(config_group_ids):
+                await self.put_kv_data(SUBSCRIPTIONS_KEY, self._subscriptions)
+                self._save_local_subscriptions(self._subscriptions)
+            self._sync_subscription_config(self._subscriptions, save_config=True)
+            return
+
+        self._sync_subscription_config(self._subscriptions, save_config=True)
+
+    async def _apply_config_subscription_changes(self):
+        config_group_ids = self._cfg_group_ids()
+        if tuple(config_group_ids) == self._last_config_group_ids:
+            return
+
+        self._reconcile_subscriptions_with_group_ids(config_group_ids)
+        await self.put_kv_data(SUBSCRIPTIONS_KEY, self._subscriptions)
+        self._save_local_subscriptions(self._subscriptions)
+        self._sync_subscription_config(self._subscriptions, save_config=True)
+
+    def _reconcile_subscriptions_with_group_ids(self, group_ids: list[str]) -> bool:
+        desired = set(group_ids)
+        changed = False
+
+        for group_id in list(self._subscriptions):
+            if group_id not in desired:
+                del self._subscriptions[group_id]
+                changed = True
+
+        for group_id in group_ids:
+            if group_id in self._subscriptions:
+                continue
+            self._subscriptions[group_id] = self._normalize_subscription(
+                {"enabled": True}
+            )
+            changed = True
+
+        return changed
+
+    def _load_local_subscriptions(self) -> dict[str, dict[str, Any]]:
+        path = self._subscriptions_file_path()
+        if not path.exists():
+            return {}
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.exception("读取本地群精华订阅文件失败: %s, %r", path, exc)
+            return {}
+        if not isinstance(raw, dict):
+            return {}
+        return {
+            str(group_id): self._normalize_subscription(sub)
+            for group_id, sub in raw.items()
+            if isinstance(sub, dict)
+        }
+
+    def _save_local_subscriptions(self, subscriptions: dict[str, dict[str, Any]]):
+        path = self._subscriptions_file_path()
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                json.dumps(subscriptions, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        except OSError as exc:
+            logger.exception("保存本地群精华订阅文件失败: %s, %r", path, exc)
+
+    def _subscriptions_file_path(self) -> Path:
+        plugin_name = getattr(self, "name", None) or "astrbot_plugin_essential_message"
+        return (
+            Path(get_astrbot_data_path())
+            / "plugin_data"
+            / str(plugin_name)
+            / SUBSCRIPTIONS_FILE_NAME
+        )
+
+    def _sync_subscription_config(
+        self,
+        subscriptions: dict[str, dict[str, Any]],
+        save_config: bool = False,
+    ):
+        group_ids = self._subscription_group_ids(subscriptions)
+        self.config[SUBSCRIPTION_GROUP_IDS_KEY] = group_ids
+        self.config["subscription_overview"] = self._format_subscription_overview(
+            subscriptions
+        )
+        self._last_config_group_ids = tuple(group_ids)
+        if save_config and hasattr(self.config, "save_config"):
+            try:
+                self.config.save_config()
+            except Exception as exc:
+                logger.exception("同步群精华订阅概览到插件配置失败: %r", exc)
+
+    @staticmethod
+    def _format_subscription_overview(subscriptions: dict[str, dict[str, Any]]) -> str:
+        if not subscriptions:
+            return "暂无订阅群聊"
+
+        lines = []
+        for group_id in sorted(subscriptions, key=str):
+            sub = subscriptions[group_id]
+            status = "开启" if sub.get("enabled") else "关闭"
+            lines.append(
+                f"群 {group_id}：{status}，每天 {sub.get('time')}，"
+                f"每次 {sub.get('count')} 条，上次自动发送 {sub.get('last_sent_date') or '无'}"
+            )
+        return "\n".join(lines)
+
+    @staticmethod
+    def _subscription_group_ids(subscriptions: dict[str, dict[str, Any]]) -> list[str]:
+        return sorted(str(group_id) for group_id in subscriptions)
 
     def _ensure_subscription(self, group_id: str) -> dict[str, Any]:
         sub = self._subscriptions.get(group_id)
@@ -689,3 +821,18 @@ class EssentialMessagePlugin(Star):
 
     def _cfg_str(self, key: str) -> str:
         return str(self.config.get(key, DEFAULT_CONFIG.get(key, ""))).strip()
+
+    def _cfg_group_ids(self) -> list[str]:
+        raw = self.config.get(SUBSCRIPTION_GROUP_IDS_KEY, [])
+        if not isinstance(raw, list):
+            return []
+
+        group_ids = []
+        seen = set()
+        for item in raw:
+            group_id = str(item).strip()
+            if not group_id or group_id in seen:
+                continue
+            group_ids.append(group_id)
+            seen.add(group_id)
+        return group_ids
