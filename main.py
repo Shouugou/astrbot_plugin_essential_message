@@ -28,7 +28,6 @@ DEFAULT_CONFIG = {
     "subscription_group_ids": [],
 }
 
-SUBSCRIPTIONS_KEY = "group_subscriptions"
 SUBSCRIPTION_GROUP_IDS_KEY = "subscription_group_ids"
 SUBSCRIPTIONS_FILE_NAME = "group_subscriptions.json"
 TIME_PATTERN = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
@@ -213,7 +212,7 @@ ESSENCE_CARD_TEMPLATE = """
     "astrbot_plugin_essential_message",
     "shouugou",
     "每天固定时间发送 QQ 群精华消息",
-    "0.3.0",
+    "0.3.1",
 )
 class EssentialMessagePlugin(Star):
     def __init__(self, context: Context, config: dict | None = None):
@@ -276,10 +275,13 @@ class EssentialMessagePlugin(Star):
             yield self._reply(event, error)
             return
 
-        sub = self._subscriptions.setdefault(group_id, {})
-        sub["enabled"] = False
+        if group_id not in self._subscriptions:
+            yield self._reply(event, "本群未开启每日群精华。")
+            return
+
+        del self._subscriptions[group_id]
         await self._save_subscriptions()
-        yield self._reply(event, "已关闭本群每日群精华。")
+        yield self._reply(event, "已关闭并移除本群每日群精华订阅。")
 
     @filter.command("精华条数")
     async def set_group_count(self, event: AstrMessageEvent, count: int):
@@ -339,7 +341,7 @@ class EssentialMessagePlugin(Star):
             return
 
         sub = self._subscriptions.get(group_id)
-        if not sub or not sub.get("enabled"):
+        if not sub:
             yield self._reply(event, "本群未开启每日群精华。")
             return
 
@@ -356,6 +358,14 @@ class EssentialMessagePlugin(Star):
                 await self._task
             except asyncio.CancelledError:
                 pass
+
+        path = self._subscriptions_file_path()
+        try:
+            if path.exists():
+                path.unlink()
+                logger.info("已清理本地订阅文件: %s", path)
+        except OSError as exc:
+            logger.exception("清理本地订阅文件失败: %s, %r", path, exc)
 
     async def _daily_loop(self):
         while not self._stopped.is_set():
@@ -497,23 +507,10 @@ class EssentialMessagePlugin(Star):
     async def _load_subscriptions(self) -> dict[str, dict[str, Any]]:
         file_data = self._load_local_subscriptions()
         if file_data:
-            await self.put_kv_data(SUBSCRIPTIONS_KEY, file_data)
             return file_data
-
-        raw = await self.get_kv_data(SUBSCRIPTIONS_KEY, {})
-        if isinstance(raw, dict):
-            subscriptions = {
-                str(group_id): self._normalize_subscription(sub)
-                for group_id, sub in raw.items()
-                if isinstance(sub, dict)
-            }
-            self._save_local_subscriptions(subscriptions)
-            return subscriptions
-
         return {}
 
     async def _save_subscriptions(self):
-        await self.put_kv_data(SUBSCRIPTIONS_KEY, self._subscriptions)
         self._save_local_subscriptions(self._subscriptions)
         self._sync_subscription_config(self._subscriptions, save_config=True)
 
@@ -521,7 +518,6 @@ class EssentialMessagePlugin(Star):
         config_entries = self._cfg_group_entries()
         if config_entries:
             if self._reconcile_subscriptions(config_entries):
-                await self.put_kv_data(SUBSCRIPTIONS_KEY, self._subscriptions)
                 self._save_local_subscriptions(self._subscriptions)
             self._sync_subscription_config(self._subscriptions, save_config=True)
             return
@@ -535,7 +531,6 @@ class EssentialMessagePlugin(Star):
             return
 
         self._reconcile_subscriptions(config_entries)
-        await self.put_kv_data(SUBSCRIPTIONS_KEY, self._subscriptions)
         self._save_local_subscriptions(self._subscriptions)
         self._sync_subscription_config(self._subscriptions, save_config=True)
 
