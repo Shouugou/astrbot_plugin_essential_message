@@ -1,4 +1,4 @@
-# Essential Message
+# 随机发送群精华
 
 每天固定时间向已订阅的 QQ 群发送几条群精华消息的 AstrBot 插件。
 
@@ -41,3 +41,8 @@ data/plugin_data/astrbot_plugin_essential_message/group_subscriptions.json
 - `/精华时间 09:30`: 设置当前群每日固定发送时间。
 - `/群精华 [条数]`: 立即在当前群发送群精华图片。
 - `/精华状态`: 查看当前群订阅状态。
+
+## 相关链接
+
+- [更新日志](CHANGELOG.md)
+- [开源许可证](LICENSE)
