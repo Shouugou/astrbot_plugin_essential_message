@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import html
 import random
 import re
 from datetime import datetime
@@ -41,7 +42,7 @@ ESSENCE_CARD_TEMPLATE = """
     </div>
   </header>
 
-  <section class="content">{{ content }}</section>
+  <section class="content">{{ content_html | safe }}</section>
 
   <footer class="footer">
     <div>
@@ -148,6 +149,9 @@ ESSENCE_CARD_TEMPLATE = """
   }
 
   .content {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
     margin-top: 28px;
     color: #202a33;
     font-size: 34px;
@@ -156,6 +160,29 @@ ESSENCE_CARD_TEMPLATE = """
     letter-spacing: 0;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+  }
+
+  .text-block {
+    white-space: pre-wrap;
+  }
+
+  .image-wrap {
+    width: 100%;
+    overflow: hidden;
+    border: 1px solid rgba(70, 90, 108, 0.16);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.64);
+  }
+
+  .essence-image {
+    display: block;
+    width: 100%;
+    max-height: 640px;
+    object-fit: contain;
+  }
+
+  .content-empty {
+    color: #687985;
   }
 
   .footer {
@@ -425,7 +452,7 @@ class EssentialMessagePlugin(Star):
             or item.get("operator_id")
             or "未知管理员",
             "operated_at": self._format_timestamp(item.get("operator_time")),
-            "content": self._content_to_text(item.get("content")).strip() or "(空内容)",
+            "content_html": self._content_to_html(item.get("content")),
             "avatar_url": self._avatar_url(sender_id),
         }
         return await self.html_render(
@@ -558,6 +585,56 @@ class EssentialMessagePlugin(Star):
                     parts.append(str(item))
             return "".join(parts)
         return str(content) if content is not None else ""
+
+    @staticmethod
+    def _content_to_html(content: Any) -> str:
+        if isinstance(content, str):
+            return EssentialMessagePlugin._text_to_html(content)
+        if isinstance(content, list):
+            parts = []
+            for item in content:
+                if isinstance(item, str):
+                    parts.append(EssentialMessagePlugin._text_to_html(item))
+                elif isinstance(item, dict):
+                    parts.append(EssentialMessagePlugin._message_segment_to_html(item))
+                elif item is not None:
+                    parts.append(EssentialMessagePlugin._text_to_html(str(item)))
+            rendered = "".join(part for part in parts if part)
+            return rendered or '<div class="content-empty">(空内容)</div>'
+        if content is None:
+            return '<div class="content-empty">(空内容)</div>'
+        return EssentialMessagePlugin._text_to_html(str(content))
+
+    @staticmethod
+    def _message_segment_to_html(item: dict[str, Any]) -> str:
+        data = item.get("data", {})
+        segment_type = str(item.get("type") or "")
+        if segment_type == "text" and isinstance(data, dict):
+            return EssentialMessagePlugin._text_to_html(str(data.get("text", "")))
+        if segment_type == "image" and isinstance(data, dict):
+            image_url = str(data.get("url") or "").strip()
+            image_file = str(data.get("file") or "").strip()
+            if not image_url and image_file.startswith(("http://", "https://")):
+                image_url = image_file
+            if image_url:
+                escaped_url = html.escape(image_url, quote=True)
+                return (
+                    '<div class="image-wrap">'
+                    f'<img class="essence-image" src="{escaped_url}" '
+                    'alt="群精华图片" referrerpolicy="no-referrer" />'
+                    "</div>"
+                )
+            return EssentialMessagePlugin._text_to_html("[图片]")
+        if segment_type:
+            return EssentialMessagePlugin._text_to_html(f"[{segment_type}]")
+        return EssentialMessagePlugin._text_to_html(str(item))
+
+    @staticmethod
+    def _text_to_html(text: str) -> str:
+        text = text.strip()
+        if not text:
+            return ""
+        return f'<div class="text-block">{html.escape(text)}</div>'
 
     @staticmethod
     def _format_timestamp(value: Any) -> str:
