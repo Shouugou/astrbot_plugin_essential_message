@@ -255,11 +255,16 @@ class EssentialMessagePlugin(Star):
             return
 
         daily_count = self._normalize_count(count or self._cfg_int("default_daily_count"))
+        now_minutes = datetime.now().hour * 60 + datetime.now().minute
+        target_minutes = self._time_to_minutes(normalized_time)
+        last_sent = ""
+        if target_minutes is not None and now_minutes >= target_minutes:
+            last_sent = datetime.now().strftime("%Y-%m-%d")
         self._subscriptions[group_id] = {
             "enabled": True,
             "count": daily_count,
             "time": normalized_time,
-            "last_sent_date": "",
+            "last_sent_date": last_sent,
         }
         await self._save_subscriptions()
         yield self._reply(
@@ -549,7 +554,19 @@ class EssentialMessagePlugin(Star):
             if group_id in self._subscriptions:
                 sub = self._subscriptions[group_id]
             else:
-                sub = self._normalize_subscription({"enabled": True})
+                new_time = (
+                    self._normalize_time(str(settings.get("time")))
+                    if settings.get("time")
+                    else None
+                ) or self._cfg_str("default_send_time") or "09:00"
+                now_minutes = datetime.now().hour * 60 + datetime.now().minute
+                target_minutes = self._time_to_minutes(new_time)
+                last_sent = ""
+                if target_minutes is not None and now_minutes >= target_minutes:
+                    last_sent = datetime.now().strftime("%Y-%m-%d")
+                sub = self._normalize_subscription(
+                    {"enabled": True, "last_sent_date": last_sent}
+                )
                 self._subscriptions[group_id] = sub
                 changed = True
 
