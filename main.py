@@ -214,7 +214,7 @@ ESSENCE_CARD_TEMPLATE = """
     "astrbot_plugin_essential_message",
     "shouugou",
     "每天固定时间发送 QQ 群精华消息",
-    "0.2.1",
+    "0.3.0",
 )
 class EssentialMessagePlugin(Star):
     def __init__(self, context: Context, config: dict | None = None):
