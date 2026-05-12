@@ -24,7 +24,6 @@ DEFAULT_CONFIG = {
     "default_daily_count": 1,
     "default_send_time": "09:00",
     "check_interval_seconds": 30,
-    "platform": "aiocqhttp",
     "message_prefix": "今日群精华",
     "subscription_group_ids": [],
     "subscription_overview": "暂无订阅群聊",
@@ -420,7 +419,7 @@ class EssentialMessagePlugin(Star):
                     "GroupMessage",
                     str(group_id),
                     MessageChain([Image(file=image_url)]),
-                    platform=self._cfg_str("platform") or "aiocqhttp",
+                    platform="aiocqhttp",
                 )
                 await asyncio.sleep(0.6)
 
@@ -531,17 +530,20 @@ class EssentialMessagePlugin(Star):
         self._sync_subscription_config(self._subscriptions, save_config=True)
 
     async def _apply_config_subscription_changes(self):
-        config_group_ids = self._cfg_group_ids()
-        if tuple(config_group_ids) == self._last_config_group_ids:
+        config_entries = self._cfg_group_entries()
+        config_keys = tuple(sorted(config_entries))
+        if config_keys == self._last_config_group_ids:
             return
 
-        self._reconcile_subscriptions_with_group_ids(config_group_ids)
+        self._reconcile_subscriptions_with_entries(config_entries)
         await self.put_kv_data(SUBSCRIPTIONS_KEY, self._subscriptions)
         self._save_local_subscriptions(self._subscriptions)
         self._sync_subscription_config(self._subscriptions, save_config=True)
 
-    def _reconcile_subscriptions_with_group_ids(self, group_ids: list[str]) -> bool:
-        desired = set(group_ids)
+    def _reconcile_subscriptions_with_entries(
+        self, entries: dict[str, dict[str, Any]]
+    ) -> bool:
+        desired = set(entries)
         changed = False
 
         for group_id in list(self._subscriptions):
@@ -549,13 +551,25 @@ class EssentialMessagePlugin(Star):
                 del self._subscriptions[group_id]
                 changed = True
 
-        for group_id in group_ids:
+        for group_id, settings in entries.items():
             if group_id in self._subscriptions:
-                continue
-            self._subscriptions[group_id] = self._normalize_subscription(
-                {"enabled": True}
-            )
-            changed = True
+                sub = self._subscriptions[group_id]
+            else:
+                sub = self._normalize_subscription({"enabled": True})
+                self._subscriptions[group_id] = sub
+                changed = True
+
+            if settings.get("count") is not None:
+                new_count = self._normalize_count(settings["count"])
+                if new_count != sub.get("count"):
+                    sub["count"] = new_count
+                    changed = True
+
+            if settings.get("time") is not None:
+                new_time = self._normalize_time(str(settings["time"]))
+                if new_time and new_time != sub.get("time"):
+                    sub["time"] = new_time
+                    changed = True
 
         return changed
 
@@ -601,12 +615,14 @@ class EssentialMessagePlugin(Star):
         subscriptions: dict[str, dict[str, Any]],
         save_config: bool = False,
     ):
-        group_ids = self._subscription_group_ids(subscriptions)
-        self.config[SUBSCRIPTION_GROUP_IDS_KEY] = group_ids
+        entries = self._subscription_config_entries(subscriptions)
+        self.config[SUBSCRIPTION_GROUP_IDS_KEY] = entries
         self.config["subscription_overview"] = self._format_subscription_overview(
             subscriptions
         )
-        self._last_config_group_ids = tuple(group_ids)
+        self._last_config_group_ids = tuple(
+            sorted(str(gid) for gid in subscriptions)
+        )
         if save_config and hasattr(self.config, "save_config"):
             try:
                 self.config.save_config()
@@ -629,8 +645,17 @@ class EssentialMessagePlugin(Star):
         return "\n".join(lines)
 
     @staticmethod
-    def _subscription_group_ids(subscriptions: dict[str, dict[str, Any]]) -> list[str]:
-        return sorted(str(group_id) for group_id in subscriptions)
+    def _subscription_config_entries(
+        subscriptions: dict[str, dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        return [
+            {
+                "group_id": str(group_id),
+                "count": sub.get("count", 1),
+                "time": sub.get("time", "09:00"),
+            }
+            for group_id, sub in sorted(subscriptions.items(), key=lambda x: str(x[0]))
+        ]
 
     def _ensure_subscription(self, group_id: str) -> dict[str, Any]:
         sub = self._subscriptions.get(group_id)
@@ -816,17 +841,24 @@ class EssentialMessagePlugin(Star):
     def _cfg_str(self, key: str) -> str:
         return str(self.config.get(key, DEFAULT_CONFIG.get(key, ""))).strip()
 
-    def _cfg_group_ids(self) -> list[str]:
+    def _cfg_group_entries(self) -> dict[str, dict[str, Any]]:
         raw = self.config.get(SUBSCRIPTION_GROUP_IDS_KEY, [])
         if not isinstance(raw, list):
-            return []
+            return {}
 
-        group_ids = []
-        seen = set()
+        entries: dict[str, dict[str, Any]] = {}
         for item in raw:
-            group_id = str(item).strip()
-            if not group_id or group_id in seen:
+            if isinstance(item, dict):
+                group_id = str(item.get("group_id") or "").strip()
+            else:
+                group_id = str(item).strip()
+            if not group_id or group_id in entries:
                 continue
-            group_ids.append(group_id)
-            seen.add(group_id)
-        return group_ids
+            if isinstance(item, dict):
+                entries[group_id] = {
+                    "count": item.get("count"),
+                    "time": item.get("time"),
+                }
+            else:
+                entries[group_id] = {}
+        return entries

@@ -22,13 +22,6 @@
     "type": "int",
     "default": 30
   },
-  "platform": {
-    "description": "平台适配器",
-    "type": "string",
-    "default": "aiocqhttp",
-    "options": ["aiocqhttp"],
-    "hint": "当前获取群精华接口依赖 aiocqhttp/OneBot 动作。"
-  },
   "message_prefix": {
     "description": "图片卡片标题",
     "type": "string",
@@ -38,15 +31,25 @@
     "description": "订阅群聊",
     "type": "list",
     "items": {
-      "type": "string"
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "string",
+          "description": "QQ 群号"
+        },
+        "count": {
+          "type": "int",
+          "description": "每次发送条数",
+          "default": 1
+        },
+        "time": {
+          "type": "string",
+          "description": "每日发送时间 (HH:MM)",
+          "default": "09:00"
+        }
+      }
     },
     "default": [],
-    "hint": "可在这里增删需要每日发送群精华的 QQ 群号。新增群会使用默认发送条数和默认发送时间；每群的条数和时间可在群聊中用 /精华条数、/精华时间 调整。"
-  },
-  "subscription_overview": {
-    "description": "订阅群聊概览",
-    "type": "text",
-    "default": "暂无订阅群聊",
-    "hint": "由插件自动同步，仅用于在配置页面查看当前订阅群聊；请使用群聊指令修改订阅。"
+    "hint": "添加订阅群聊并设置每群的发送条数和时间。群内也可用 /精华条数、/精华时间 单独调整。"
   }
 }

@@ -22,8 +22,7 @@
 - `default_daily_count`: 群订阅默认每次发送条数。
 - `default_send_time`: 群订阅默认每日固定发送时间，格式 `HH:MM`。
 - `message_prefix`: 图片卡片标题。
-- `subscription_group_ids`: 订阅群聊 QQ 群号列表，可在配置页面增删；新增群使用默认条数和默认时间。
-- `subscription_overview`: 当前订阅群聊概览，由插件自动同步，请通过群聊指令修改订阅。
+- `subscription_group_ids`: 订阅群聊列表，可在配置页面增删并设置每群的发送条数（`count`）和发送时间（`time`）。
 
 当前获取群精华和主动发群消息依赖 `aiocqhttp` / OneBot 适配器。
 
