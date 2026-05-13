@@ -30,6 +30,7 @@ DEFAULT_CONFIG = {
 
 SUBSCRIPTION_GROUP_IDS_KEY = "subscription_group_ids"
 SUBSCRIPTIONS_FILE_NAME = "group_subscriptions.json"
+SENT_IDS_FILE_NAME = "sent_message_ids.json"
 TIME_PATTERN = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
 
 
@@ -212,7 +213,7 @@ ESSENCE_CARD_TEMPLATE = """
     "astrbot_plugin_essential_message",
     "Shouugou",
     "每天固定时间发送 QQ 群精华消息",
-    "0.3.1",
+    "1.0.0",
 )
 class EssentialMessagePlugin(Star):
     def __init__(self, context: Context, config: dict | None = None):
@@ -226,6 +227,7 @@ class EssentialMessagePlugin(Star):
 
     async def initialize(self):
         self._subscriptions = await self._load_subscriptions()
+        self._sent_message_ids = self._load_sent_message_ids()
         await self._apply_startup_config_subscriptions()
         self._task = asyncio.create_task(self._daily_loop())
         if self._cfg_bool("enabled"):
@@ -330,9 +332,9 @@ class EssentialMessagePlugin(Star):
 
         sub = self._ensure_subscription(group_id)
         send_count = self._normalize_count(count or int(sub["count"]))
-        ok = await self._send_random_essences(group_id, send_count)
+        ok, msg = await self._send_random_essences(group_id, send_count)
         if not ok:
-            yield self._reply(event, "发送失败：没有找到可发送的精华消息，或平台接口调用失败。")
+            yield self._reply(event, msg or "发送失败：没有找到可发送的精华消息，或平台接口调用失败。")
             return
         event.stop_event()
 
@@ -372,14 +374,20 @@ class EssentialMessagePlugin(Star):
         except OSError as exc:
             logger.exception("清理本地订阅文件失败: %s, %r", path, exc)
 
+        self._clear_sent_message_ids()
+
     async def _daily_loop(self):
+        last_reset_date = ""
         while not self._stopped.is_set():
             try:
+                today = datetime.now().strftime("%Y-%m-%d")
+                if today != last_reset_date:
+                    self._clear_sent_message_ids()
+                    last_reset_date = today
+
                 await self._apply_config_subscription_changes()
                 if self._cfg_bool("enabled"):
-                    now = datetime.now()
-                    today = now.strftime("%Y-%m-%d")
-                    now_minutes = now.hour * 60 + now.minute
+                    now_minutes = datetime.now().hour * 60 + datetime.now().minute
                     for group_id, sub in list(self._subscriptions.items()):
                         if not sub.get("enabled"):
                             continue
@@ -389,7 +397,8 @@ class EssentialMessagePlugin(Star):
                         if target_minutes is None or now_minutes < target_minutes:
                             continue
                         count = self._normalize_count(sub.get("count", 1))
-                        if await self._send_random_essences(group_id, count):
+                        ok, msg = await self._send_random_essences(group_id, count)
+                        if ok or msg:
                             sub["last_sent_date"] = today
                             await self._save_subscriptions()
 
@@ -405,12 +414,14 @@ class EssentialMessagePlugin(Star):
                 logger.exception("Essential Message 调度循环异常: %r", exc)
                 await asyncio.sleep(60)
 
-    async def _send_random_essences(self, group_id: str, count: int) -> bool:
+    async def _send_random_essences(
+        self, group_id: str, count: int
+    ) -> tuple[bool, str | None]:
         try:
             essences = await self._fetch_essences(group_id)
             if not essences:
                 logger.warning("群 %s 没有可发送的精华消息。", group_id)
-                return False
+                return False, None
 
             sent_ids = self._sent_message_ids.setdefault(group_id, set())
             candidates = [
@@ -419,8 +430,8 @@ class EssentialMessagePlugin(Star):
                 if str(item.get("message_id") or item.get("msg_seq") or "")
                 not in sent_ids
             ]
-            if len(candidates) < count:
-                candidates = essences
+            if not candidates:
+                return False, "今日群精华已全部发送，明天再来吧。"
 
             selected = random.sample(candidates, k=min(count, len(candidates)))
             for item in selected:
@@ -437,11 +448,12 @@ class EssentialMessagePlugin(Star):
                 )
                 await asyncio.sleep(0.6)
 
+            self._save_sent_message_ids()
             logger.info("已向群 %s 发送 %s 条随机精华消息。", group_id, len(selected))
-            return bool(selected)
+            return True, None
         except Exception as exc:
             logger.exception("向群 %s 发送随机精华失败: %r", group_id, exc)
-            return False
+            return False, None
 
     async def _fetch_essences(self, group_id: str) -> list[dict[str, Any]]:
         bot = self._get_aiocqhttp_bot()
@@ -620,6 +632,56 @@ class EssentialMessagePlugin(Star):
             / str(plugin_name)
             / SUBSCRIPTIONS_FILE_NAME
         )
+
+    def _sent_ids_file_path(self) -> Path:
+        plugin_name = getattr(self, "name", None) or "astrbot_plugin_essential_message"
+        return (
+            Path(get_astrbot_data_path())
+            / "plugin_data"
+            / str(plugin_name)
+            / SENT_IDS_FILE_NAME
+        )
+
+    def _load_sent_message_ids(self) -> dict[str, set[str]]:
+        path = self._sent_ids_file_path()
+        if not path.exists():
+            return {}
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        if not isinstance(raw, dict):
+            return {}
+        return {
+            str(group_id): set(ids)
+            for group_id, ids in raw.items()
+            if isinstance(ids, list)
+        }
+
+    def _save_sent_message_ids(self):
+        path = self._sent_ids_file_path()
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            data = {
+                group_id: sorted(ids)
+                for group_id, ids in self._sent_message_ids.items()
+                if ids
+            }
+            path.write_text(
+                json.dumps(data, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        except OSError as exc:
+            logger.exception("保存已发送记录失败: %s, %r", path, exc)
+
+    def _clear_sent_message_ids(self):
+        path = self._sent_ids_file_path()
+        try:
+            if path.exists():
+                path.unlink()
+        except OSError as exc:
+            logger.exception("清理已发送记录失败: %s, %r", path, exc)
+        self._sent_message_ids.clear()
 
     def _sync_subscription_config(
         self,
