@@ -1,6 +1,6 @@
 name: astrbot_plugin_essential_message
 display_name: 随机发送群精华
 desc: 每天固定时间发送几条 QQ 群精华消息。
-version: v1.0.0
+version: v1.0.1
 author: Shouugou
 repo: https://github.com/Shouugou/astrbot_plugin_essential_message

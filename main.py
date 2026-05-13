@@ -213,7 +213,7 @@ ESSENCE_CARD_TEMPLATE = """
     "astrbot_plugin_essential_message",
     "Shouugou",
     "每天固定时间发送 QQ 群精华消息",
-    "1.0.0",
+    "1.0.1",
 )
 class EssentialMessagePlugin(Star):
     def __init__(self, context: Context, config: dict | None = None):
@@ -457,7 +457,7 @@ class EssentialMessagePlugin(Star):
 
     async def _fetch_essences(self, group_id: str) -> list[dict[str, Any]]:
         bot = self._get_aiocqhttp_bot()
-        raw_group_id: str | int = int(group_id) if str(group_id).isdigit() else group_id
+        raw_group_id: int = int(group_id)
         result = await bot.call_action("get_essence_msg_list", group_id=raw_group_id)
 
         data = result.get("data") if isinstance(result, dict) else result
