@@ -213,7 +213,7 @@ ESSENCE_CARD_TEMPLATE = """
     "astrbot_plugin_essential_message",
     "Shouugou",
     "每天固定时间发送 QQ 群精华消息",
-    "1.0.2",
+    "1.0.3",
 )
 class EssentialMessagePlugin(Star):
     def __init__(self, context: Context, config: dict | None = None):
@@ -330,8 +330,11 @@ class EssentialMessagePlugin(Star):
             yield self._reply(event, "请在群聊中使用该指令。")
             return
 
-        sub = self._ensure_subscription(group_id)
-        send_count = self._normalize_count(count or int(sub["count"]))
+        sub = self._subscriptions.get(group_id)
+        default_count = self._cfg_int("default_daily_count")
+        send_count = self._normalize_count(
+            count or (int(sub["count"]) if sub else default_count)
+        )
         ok, msg = await self._send_random_essences(group_id, send_count)
         if not ok:
             yield self._reply(event, msg or "发送失败：没有找到可发送的精华消息，或平台接口调用失败。")
