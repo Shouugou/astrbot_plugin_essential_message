@@ -213,7 +213,7 @@ ESSENCE_CARD_TEMPLATE = """
     "astrbot_plugin_essential_message",
     "Shouugou",
     "每天固定时间发送 QQ 群精华消息",
-    "1.0.1",
+    "1.0.2",
 )
 class EssentialMessagePlugin(Star):
     def __init__(self, context: Context, config: dict | None = None):
@@ -883,7 +883,7 @@ class EssentialMessagePlugin(Star):
 
     @staticmethod
     def _stop_llm(event: AstrMessageEvent):
-        event.should_call_llm(True)
+        event.should_call_llm(False)
 
     def _cfg_bool(self, key: str) -> bool:
         return bool(self.config.get(key, DEFAULT_CONFIG.get(key, False)))
